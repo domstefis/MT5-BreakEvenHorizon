@@ -2,11 +2,11 @@
 //| BreakEvenHorizon.mq5                                             |
 //| Copyright 2025 @ domstefis                                       |
 //| Distributed under MIT License - Free to use, modify, and share   |
-//| Post freely on Reddit or elsewhere with attribution              |
+//| Post your version freely on Reddit or elsewhere with attribution |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, domstefis"
 #property link      "https://github.com/domstefis"
-#property version   "1.00"
+#property version   "1.01"
 #property strict
 #property description "Draws a horizontal line at the break-even point between oldest and newest open positions"
 
@@ -67,15 +67,15 @@ void OnChartEvent(const int id, const long &lparam,
 }
 
 //+------------------------------------------------------------------+
-//| Updates the break-even line based on open positions              |
+//| Updates the break-even line based on open positions and lot sizes|
 //+------------------------------------------------------------------+
 void UpdateBreakEvenLine()
 {
    int positionCount = 0;
-   datetime oldestTime = 0;
-   datetime newestTime = 0;
-   double oldestPrice = 0.0;
-   double newestPrice = 0.0;
+   double sum_buy_lot = 0.0;
+   double sum_buy_lot_price = 0.0;
+   double sum_sell_lot = 0.0;
+   double sum_sell_lot_price = 0.0;
    
    // Scan all open positions
    for(int i = 0; i < PositionsTotal(); i++)
@@ -86,30 +86,40 @@ void UpdateBreakEvenLine()
       if(PositionGetString(POSITION_SYMBOL) == _Symbol)
       {
          positionCount++;
-         datetime posTime = (datetime)PositionGetInteger(POSITION_TIME);
-         double posPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+         double lot_size = PositionGetDouble(POSITION_VOLUME);
+         double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+         int pos_type = (int)PositionGetInteger(POSITION_TYPE);
          
-         if(oldestTime == 0 || posTime < oldestTime)
+         if(pos_type == POSITION_TYPE_BUY)
          {
-            oldestTime = posTime;
-            oldestPrice = posPrice;
+            sum_buy_lot += lot_size;
+            sum_buy_lot_price += lot_size * open_price;
          }
-         
-         if(newestTime == 0 || posTime > newestTime)
+         else if(pos_type == POSITION_TYPE_SELL)
          {
-            newestTime = posTime;
-            newestPrice = posPrice;
+            sum_sell_lot += lot_size;
+            sum_sell_lot_price += lot_size * open_price;
          }
       }
    }
    
-   // Update visualization based on position count
+   // Update visualization based on position count and net lot
    if(positionCount > 1)
    {
-      g_breakEvenPrice = NormalizeDouble((oldestPrice + newestPrice) / 2.0, _Digits);
-      DrawBreakEvenLine(g_breakEvenPrice);
+      double net_lot = sum_buy_lot - sum_sell_lot;
+      if(MathAbs(net_lot) > 1e-5) // Avoid division by zero or near-zero
+      {
+         double numerator = sum_buy_lot_price - sum_sell_lot_price;
+         g_breakEvenPrice = numerator / net_lot;
+         g_breakEvenPrice = NormalizeDouble(g_breakEvenPrice, _Digits);
+         DrawBreakEvenLine(g_breakEvenPrice);
+      }
+      else
+      {
+         RemoveBreakEvenLine();
+      }
    }
-   else if(g_isLineVisible)
+   else
    {
       RemoveBreakEvenLine();
    }
